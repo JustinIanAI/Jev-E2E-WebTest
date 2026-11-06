@@ -1,5 +1,5 @@
 /**
- * 模块图探针 —— 主线程入口（F4 · 见 .trae/specs/f4-cli-startup-lazy-load/spec.md）。
+ * 模块图探针 —— 主线程入口（F4）。
  *
  * 用法：node --import <本文件> <entry> [...args]
  * 环境：IDWTH_PROBE_LOG（必填，绝对路径）—— 每个被解析的模块 URL 追加一行。

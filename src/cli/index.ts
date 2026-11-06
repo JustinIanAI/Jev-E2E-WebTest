@@ -333,10 +333,15 @@ async function cmdValidate(rest: readonly string[], cwd: string): Promise<ExitCo
 /**
  * 执行臂按需加载点（F4 · 全仓唯一入口）。
  *
- * `run-handler` 会静态拉入 `engine-provider/playwright` → `playwright-core`，实测
- * 占 CLI 启动开销的 ~80%（0.13s / 0.16s，模块图 87 → 55）。**顶层禁止静态 import
- * 它**，否则 `--version`、`validate`、`complete` 这些根本用不到浏览器的命令都要为
- * 它付账。门禁：`tests/integration/cli-module-graph.test.ts`（双向 + 自证断言）。
+ * `run-handler` 会静态拉入 `engine-provider/playwright` → `playwright-core`，是入口
+ * 依赖树里最重的一支。**顶层禁止静态 import 它**，否则 `--version`、`validate`、
+ * `complete` 这些根本用不到浏览器的命令都要为它付账。
+ *
+ * 收益请用 `npm run bench:startup` 自行复测：该脚本强制剥离宿主注入的 `NODE_OPTIONS`
+ * 与代理变量，并同时给出去重模块数与 resolve 事件数。**这里不写死任何绝对耗时** ——
+ * 它随机器变化，且宿主 shim 会让读数放大数倍，固化成注释只会误导下一个人。
+ *
+ * 门禁：`tests/integration/cli-module-graph.test.ts`（双向 + 自证断言）。
  *
  * 不变量：
  *  1. 只在 `cmdRun` 内调用。

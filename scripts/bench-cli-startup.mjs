@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * IDWTH CLI 启动预算度量（F4 · 见 .trae/specs/f4-cli-startup-lazy-load/spec.md）。
+ * IDWTH CLI 启动预算度量（F4）。
  *
  * 用法：
  *   node scripts/bench-cli-startup.mjs [--runs N] [--json]
  *
  * 为什么这个脚本必须先剥离环境再测：
  * 本机 agent shell 会注入 `NODE_OPTIONS=--require .../node-language-shim.cjs`（宿主 fs
- * broker）。同一条命令、同一份构建产物，带注入 0.68s、剥离后 0.17s，CPU 采样里 67% 的
- * 时间落在那个 shim 上。**不剥离就等于在测宿主，不是在测 idwth。**
+ * broker）。同一条命令、同一份构建产物，带注入的读数是剥离后的数倍，CPU 采样里过半时间
+ * 落在那个 shim 上。**不剥离就等于在测宿主，不是在测 idwth。** 具体差值由本脚本运行时
+ * 打印的对照给出（见下），不在此写死 —— 它随机器与 shim 版本变化。
  *
  * 因此本脚本：
  *  - 强制以剥离后的 env 起子进程（NODE_OPTIONS + 全部 *_PROXY，大小写各一份）；
@@ -117,7 +118,14 @@ async function moduleGraph(entry, args, env, cwd) {
     });
     const raw = await readFile(logPath, 'utf8').catch(() => '');
     const urls = raw.split('\n').filter((line) => line.length > 0);
-    return { modules: urls.length, playwright: urls.filter((u) => PLAYWRIGHT_RE.test(u)).length };
+    const unique = [...new Set(urls)];
+    return {
+      // 探针每解析一次记一条，同一模块可能被解析多次 —— 这是「事件数」，不是模块数。
+      resolveEvents: urls.length,
+      // 去重后才是真正的模块数，与「模块图」的口径一致。
+      modules: unique.length,
+      playwright: unique.filter((u) => PLAYWRIGHT_RE.test(u)).length,
+    };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -170,7 +178,7 @@ async function main() {
     };
 
     report.rows = [
-      { ...floors, ...{ modules: null, playwright: null } },
+      { ...floors, ...{ modules: null, resolveEvents: null, playwright: null } },
       { ...version, ...graphs.version },
       { ...validate, ...graphs.validate },
       { ...run, ...graphs.run },
@@ -214,13 +222,22 @@ async function main() {
     }
   }
   lines.push('');
-  lines.push('  命令                                    p50      p95      模块数  playwright');
+  lines.push(
+    '  命令                                    p50      p95   模块(去重)  resolve事件  playwright',
+  );
   for (const row of report.rows) {
     const pad = row.label.padEnd(38, ' ');
-    const modules = row.modules === null ? '     –' : String(row.modules).padStart(6);
-    const pw = row.playwright === null ? '         –' : String(row.playwright).padStart(10);
-    lines.push(`  ${pad}${fmt(row.p50).padStart(8)}  ${fmt(row.p95).padStart(8)}  ${modules}${pw}`);
+    const modules = row.modules === null ? '         –' : String(row.modules).padStart(10);
+    const events =
+      row.resolveEvents === null ? '            –' : String(row.resolveEvents).padStart(12);
+    const pw = row.playwright === null ? '           –' : String(row.playwright).padStart(11);
+    lines.push(`  ${pad}${fmt(row.p50).padStart(8)}  ${fmt(row.p95).padStart(8)}  ${modules}${events}${pw}`);
   }
+  lines.push('');
+  lines.push(
+    `  口径：模块数 = 去重后的 URL 数；resolve 事件数含重复解析，两者不可混用。p95 基于 ${report.runs} 个样本，` +
+      '少于 20 个时它等于最大值，只能看量级。',
+  );
   lines.push('');
   lines.push('  判据：--version / validate 的 playwright 命中必须为 0；run 必须 > 0（执行臂仍在）。');
   lines.push('  墙钟仅作度量参考，不是 CI 门禁（共享 runner 差异 3–5 倍）。');

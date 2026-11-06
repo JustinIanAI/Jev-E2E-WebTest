@@ -1,7 +1,9 @@
 /**
  * F4 门禁 —— CLI 入口依赖边界（模块图判据）。
  *
- * 规格：.trae/specs/f4-cli-startup-lazy-load/spec.md
+ * 被守住的不变量：`src/cli/index.ts` 顶层不得静态 import 执行臂
+ * （`run-handler` / `engine-provider/playwright`）；`run` 命令经 `loadDefaultRunHandler()`
+ * 按需加载。规则原文见 `AGENTS.md` §3「入口依赖边界」。
  *
  * 为什么用模块图而不是秒表：启动耗时在 CI 共享 runner 上差异可达 3–5 倍，设秒表门限
  * 会制造 PR #33 刚整治掉的那类 fake red；而"这条命令有没有把浏览器执行臂拉进来"是
@@ -13,8 +15,11 @@
  *  3. 自证（每次采集）：必须录到 dist/cli/index.js —— 否则探针失灵同样会"看起来绿"。
  *     「没抓到 playwright」与「探针根本没工作」在输出上无法区分，这是本项目反复踩过的坑。
  *
- * 环境隔离：必须剥离宿主注入的 NODE_OPTIONS 与代理变量。带 shim 时同一条命令
- * 0.68s、剥离后 0.17s（spec §1）—— 不剥离，测的就是宿主而不是产品。
+ * 环境隔离：必须剥离宿主注入的 NODE_OPTIONS 与代理变量 —— 不剥离，测的就是宿主而不是
+ * 产品（宿主 fs broker shim 会让同一条命令慢数倍，读数跨环境不可比）。
+ *
+ * 已知覆盖边界（未修，见后续 issue）：钩子只覆盖 ESM resolve 链，看不到 CJS `require`
+ * 侧信道；且 dist 已存在时不重建，本地改完源码忘了 build 会得到假绿（CI 不受影响）。
  */
 import { execFile } from 'node:child_process';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
